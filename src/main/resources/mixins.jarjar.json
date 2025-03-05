@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "minVersion": "0.8.3-GTNH",
+  "refmap": "mixins.jarjar.refmap.json",
+  "target": "@env(DEFAULT)",
+  "compatibilityLevel": "JAVA_8"
+}
