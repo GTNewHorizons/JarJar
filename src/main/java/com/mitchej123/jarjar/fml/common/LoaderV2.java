@@ -145,7 +145,7 @@ public class LoaderV2 extends Loader {
         final List<ModCandidateV2> modCandidates = discoverer.getModCandidates();
         final List<File> nonModLibs = discoverer.getNonModLibs();
 
-        modCandidates.sort(Comparator.comparing(ModCandidateV2::getID, String.CASE_INSENSITIVE_ORDER));
+        modCandidates.sort(Comparator.comparing(ModCandidateV2::getId, String.CASE_INSENSITIVE_ORDER));
         // Build up the list of potential mods
         final List<ModContainerWrapper> modList = Lists.newArrayList();
         for (ModCandidateV2 candidate : modCandidates) {

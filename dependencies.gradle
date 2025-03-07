@@ -39,20 +39,13 @@ dependencies {
     compileOnly('org.jetbrains:annotations:24.0.1')
 
     // Dependencies
-    implementation("com.gtnewhorizons.retrofuturabootstrap:RetroFuturaBootstrap:1.0.9") { transitive = false }
+    api("com.gtnewhorizons.retrofuturabootstrap:RetroFuturaBootstrap:1.0.9") { transitive = false }
     api("com.github.GTNewHorizons:GTNHLib:0.6.11:dev")
     api("org.apache.maven:maven-artifact:3.8.5")
-
-    implementation("io.github.legacymoddingmc:unimixins:0.1.20:dev")
-    implementation("com.github.GTNewHorizons:Hodgepodge:2.6.29:dev")
-
-
-    // Compile time only dependencies
-    compileOnly('com.github.GTNewHorizons:CodeChickenCore:1.4.1:dev')
+    api("io.github.legacymoddingmc:unimixins:0.1.20:dev")
 
     // Dev runtime only dependencies
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:StorageDrawers:2.1.0-GTNH:dev")
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:NotEnoughItems:2.7.29-GTNH:dev")
-    //runtimeOnlyNonPublishable("com.github.GTNewHorizons:Angelica:1.0.0-beta99:dev")
 }
 

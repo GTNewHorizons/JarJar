@@ -51,12 +51,6 @@ public class ModCandidateV2 extends ModCandidate implements SortableCandidate {
         super(classPathRoot, modContainer, sourceType, isMinecraft, classpath);
     }
 
-    public String getID() {
-        if(fmlCorePlugin != null) return fmlCorePlugin;
-        if(sourceFilename != null) return sourceFilename;
-        return modContainer.getName();
-    }
-
     public boolean hasAccessTransformers() {
         return accessTransformers != null;
     }
@@ -148,7 +142,9 @@ public class ModCandidateV2 extends ModCandidate implements SortableCandidate {
 
     @Override
     public String getId() {
-        return getID();
+        if(fmlCorePlugin != null) return fmlCorePlugin;
+        if(sourceFilename != null) return sourceFilename;
+        return modContainer.getName();
     }
 
     public List<ASMModParserV2> getAsmDataCollection() {

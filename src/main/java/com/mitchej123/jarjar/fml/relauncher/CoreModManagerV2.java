@@ -35,10 +35,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
@@ -56,6 +58,7 @@ public final class CoreModManagerV2 extends CoreModManager {
     public static final String NESTED_DIR = "nestedmods";
     public static final Attributes.Name FORCELOADASMOD = new Attributes.Name("ForceLoadAsMod");
     public static final String DISABLED_FILES = "jarjar.disabledFiles";
+    public static final Set<String> loadedByCommandLine = new HashSet<>();
 
     public static final Comparator<ModCandidateV2> COREMOD_COMPARATOR = Comparator.nullsFirst(
         Comparator.comparing(ModCandidateV2::getSortOrder)
@@ -144,6 +147,7 @@ public final class CoreModManagerV2 extends CoreModManager {
             FMLRelaunchLog.info("Found a command line coremod : %s", coreModClassName);
             final CoreModManager.FMLPluginWrapper wrap = loadCoreMod(classLoader, coreModClassName, null);
             if (wrap != null) {
+                loadedByCommandLine.add(coreModClassName);
                 final URL coreModLocation = wrap.coreModInstance.getClass().getProtectionDomain().getCodeSource().getLocation();
                 final String jarPath = coreModLocation.getPath();
 
@@ -225,7 +229,7 @@ public final class CoreModManagerV2 extends CoreModManager {
 
     public static void discoverCoreMods(File mcDir, LaunchClassLoader classLoader) {
         ModListHelper.parseModList(mcDir);
-        FMLRelaunchLog.fine("Discovering coremods - pass one");
+        FMLRelaunchLog.fine("Discovering coremods");
 
         final FilenameFilter ff = (dir, name) -> name.endsWith(".jar");
         checkDerps(modDir, mcDir, classLoader);
@@ -247,6 +251,10 @@ public final class CoreModManagerV2 extends CoreModManager {
             FMLRelaunchLog.fine("Examining for coremod candidacy %s", modFile.getName());
             final ModCandidateV2 modCandidate = JarUtil.examineModCandidate(modFile, null, true);
             if (modCandidate == null) continue;
+            if(modCandidate.hasCoreMod() && loadedByCommandLine.contains(modCandidate.getCoreMod())) {
+                FMLRelaunchLog.info("Skipping coremod previously loaded via command line %s", modCandidate.getCoreMod());
+                continue;
+            }
 
             modCandidates.add(modCandidate);
             if(modCandidate.hasNestedMods()) {
@@ -256,7 +264,7 @@ public final class CoreModManagerV2 extends CoreModManager {
     }
 
     private static void loadTweakersAndCoreMods(File mcDir, LaunchClassLoader classLoader) {
-        FMLRelaunchLog.fine("Discovering coremods - pass two");
+        FMLRelaunchLog.fine("Loading Tweakers and coremods");
 
         // TODO: This needs to include any core mods loaded from the command line in the deduplication process
         final ModCandidateV2Sorter<ModCandidateV2> candidateSorter = new ModCandidateV2Sorter<>(modCandidates, COREMOD_COMPARATOR);
