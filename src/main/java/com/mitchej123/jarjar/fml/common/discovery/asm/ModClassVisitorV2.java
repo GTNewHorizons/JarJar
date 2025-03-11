@@ -31,14 +31,17 @@ public class ModClassVisitorV2 extends ModClassVisitor {
         if(discoverer instanceof ASMModParserV2 discovererV2) {
             this.discovererV2 = discovererV2;
         } else {
-            throw new IllegalArgumentException("ASMModParser must be an instance of ASMModParserV2");
+            this.discovererV2 = null;
         }
-
     }
 
     @Override
     public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
-        discovererV2.beginNewTypeName(name, version, superName, interfaces);
+        if(discovererV2 != null) {
+            discovererV2.beginNewTypeName(name, version, superName, interfaces);
+        } else {
+            super.visit(version, access, name, signature, superName, interfaces);
+        }
     }
 
 }

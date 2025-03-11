@@ -28,6 +28,7 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -262,6 +263,7 @@ public final class CoreModManagerV2 extends CoreModManager {
             }
         }
     }
+    private static final Set<String> injectedURLS = new HashSet<>();
 
     private static void loadTweakersAndCoreMods(File mcDir, LaunchClassLoader classLoader) {
         FMLRelaunchLog.fine("Loading Tweakers and coremods");
@@ -278,6 +280,7 @@ public final class CoreModManagerV2 extends CoreModManager {
         modCandidates.clear();
         modCandidates.addAll(resolvedCandidates.get());
 
+        boolean injectMixins = false;
 
         for (ModCandidateV2 candidate : modCandidates) {
             final File modFile = candidate.getModContainer();
@@ -289,7 +292,20 @@ public final class CoreModManagerV2 extends CoreModManager {
                 FMLRelaunchLog.info("Tweaker is %s", candidate.getTweaker());
                 handleCascadingTweak(modFile, null, candidate.getTweaker(), classLoader, candidate.getSortOrder());
                 if ("org.spongepowered.asm.launch.MixinTweaker".equals(candidate.getTweaker())) {
-                    injectMixinTweaker(classLoader, mcDir, FMLInjectionData.mccversion);
+                    injectMixins = true;
+                    try {
+                        if(injectedURLS.add(modFile.getName())) {
+                            // Have to manually stuff the tweaker into the parent classloader
+                            getADDURL().invoke(classLoader.getClass().getClassLoader(), modFile.toURI().toURL());
+                        }
+                    } catch (IllegalAccessException | InvocationTargetException | MalformedURLException | NoSuchMethodException e) {
+                        throw new RuntimeException(e);
+                    }
+                    try {
+                        classLoader.addURL(modFile.toURI().toURL());
+                    } catch (MalformedURLException e) {
+                        FMLRelaunchLog.log(Level.ERROR, e, "Unable to convert file into a URL. weird");
+                    }
                 }
 
                 if (!candidate.containsMod()) {
@@ -315,6 +331,9 @@ public final class CoreModManagerV2 extends CoreModManager {
                 }
                 loadCoreMod(classLoader, candidate.getCoreMod(), modFile);
             }
+        }
+        if(injectMixins) {
+            injectMixinTweaker(classLoader, mcDir, FMLInjectionData.mccversion);
         }
         modCandidates.clear();
     }
@@ -357,14 +376,20 @@ public final class CoreModManagerV2 extends CoreModManager {
         }
     }
 
+    public static Method getADDURL() throws NoSuchMethodException {
+        if (ADDURL == null) {
+            ADDURL = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
+            ADDURL.setAccessible(true);
+        }
+
+        return ADDURL;
+
+    }
+
     public static void handleCascadingTweak(File coreMod, JarFile jar, String cascadedTweaker, LaunchClassLoader classLoader, Integer sortingOrder) {
         try {
             // Have to manually stuff the tweaker into the parent classloader
-            if (ADDURL == null) {
-                ADDURL = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
-                ADDURL.setAccessible(true);
-            }
-            ADDURL.invoke(classLoader.getClass().getClassLoader(), coreMod.toURI().toURL());
+            getADDURL().invoke(classLoader.getClass().getClassLoader(), coreMod.toURI().toURL());
             classLoader.addURL(coreMod.toURI().toURL());
             CoreModManager.tweaker.injectCascadingTweak(cascadedTweaker);
             tweakSorting.put(cascadedTweaker, sortingOrder);
