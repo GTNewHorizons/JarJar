@@ -5,6 +5,7 @@
 package com.mitchej123.jarjar.fml.relauncher;
 
 import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ObjectArrays;
 import com.mitchej123.jarjar.discovery.ModCandidateV2Sorter;
 import com.mitchej123.jarjar.fml.common.discovery.ModCandidateV2;
@@ -21,6 +22,10 @@ import net.minecraft.launchwrapper.ITweaker;
 import net.minecraft.launchwrapper.Launch;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 import org.apache.logging.log4j.Level;
+import org.spongepowered.asm.launch.MixinBootstrap;
+import org.spongepowered.asm.launch.platform.MixinPlatformManager;
+import org.spongepowered.asm.launch.platform.container.ContainerHandleURI;
+import org.spongepowered.asm.launch.platform.container.IContainerHandle;
 
 import java.io.File;
 import java.io.FileFilter;
@@ -28,7 +33,6 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -263,7 +267,6 @@ public final class CoreModManagerV2 extends CoreModManager {
             }
         }
     }
-    private static final Set<String> injectedURLS = new HashSet<>();
 
     private static void loadTweakersAndCoreMods(File mcDir, LaunchClassLoader classLoader) {
         FMLRelaunchLog.fine("Loading Tweakers and coremods");
@@ -279,8 +282,7 @@ public final class CoreModManagerV2 extends CoreModManager {
         }
         modCandidates.clear();
         modCandidates.addAll(resolvedCandidates.get());
-
-        boolean injectMixins = false;
+        final List<IContainerHandle> mixinHandlers = new ArrayList<>();
 
         for (ModCandidateV2 candidate : modCandidates) {
             final File modFile = candidate.getModContainer();
@@ -292,19 +294,9 @@ public final class CoreModManagerV2 extends CoreModManager {
                 FMLRelaunchLog.info("Tweaker is %s", candidate.getTweaker());
                 handleCascadingTweak(modFile, null, candidate.getTweaker(), classLoader, candidate.getSortOrder());
                 if ("org.spongepowered.asm.launch.MixinTweaker".equals(candidate.getTweaker())) {
-                    injectMixins = true;
-                    try {
-                        if(injectedURLS.add(modFile.getName())) {
-                            // Have to manually stuff the tweaker into the parent classloader
-                            getADDURL().invoke(classLoader.getClass().getClassLoader(), modFile.toURI().toURL());
-                        }
-                    } catch (IllegalAccessException | InvocationTargetException | MalformedURLException | NoSuchMethodException e) {
-                        throw new RuntimeException(e);
-                    }
-                    try {
-                        classLoader.addURL(modFile.toURI().toURL());
-                    } catch (MalformedURLException e) {
-                        FMLRelaunchLog.log(Level.ERROR, e, "Unable to convert file into a URL. weird");
+                    IContainerHandle handler = (IContainerHandle)injectMixinAndTweaker(modFile, classLoader, mcDir, FMLInjectionData.mccversion);
+                    if(handler != null) {
+                        mixinHandlers.add(handler);
                     }
                 }
 
@@ -332,28 +324,53 @@ public final class CoreModManagerV2 extends CoreModManager {
                 loadCoreMod(classLoader, candidate.getCoreMod(), modFile);
             }
         }
-        if(injectMixins) {
-            injectMixinTweaker(classLoader, mcDir, FMLInjectionData.mccversion);
-        }
         modCandidates.clear();
+
+        if(!mixinHandlers.isEmpty()) {
+            try {
+                final Field platformField = MixinBootstrap.class.getDeclaredField("platform");
+                platformField.setAccessible(true);
+                MixinPlatformManager platform = (MixinPlatformManager) platformField.get(null);
+                for(IContainerHandle handler : mixinHandlers) {
+                    platform.addContainer(handler);
+                }
+            } catch (NoSuchFieldException | IllegalAccessException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     public static boolean mixinInit = false;
-
-    private static void injectMixinTweaker(LaunchClassLoader classLoader, File mcDir, String mccversion) {
-        if (mixinInit) return;
-        mixinInit = true;
-        FMLRelaunchLog.info("Injecting Mixin Tweaker!");
-        try {
-            classLoader.addClassLoaderExclusion("org.spongepowered.asm.launch");
-            Class<?> tweakerClass = Class.forName("org.spongepowered.asm.launch.MixinTweaker", true, classLoader);
-            ITweaker tweaker = (ITweaker) tweakerClass.getConstructor().newInstance();
-            tweaker.acceptOptions(new ArrayList<>(), mcDir, null, mccversion);
-            tweaker.injectIntoClassLoader(classLoader);
-        } catch (ClassNotFoundException | InvocationTargetException | InstantiationException | IllegalAccessException | NoSuchMethodException e) {
-            throw new RuntimeException(e);
+    private static final Set<String> loadedMixins = new HashSet<>();
+    // Meh - if this is an IContainerHandle things load too early, so return an object and cast later.
+    private static Object injectMixinAndTweaker(File modFile, LaunchClassLoader classLoader, File mcDir, String mccversion) {
+        if (!mixinInit) {
+            mixinInit = true;
+            FMLRelaunchLog.info("Injecting Mixin Tweaker!");
+            try {
+                classLoader.addClassLoaderExclusion("org.spongepowered.asm.launch");
+                Class<?> tweakerClass = Class.forName("org.spongepowered.asm.launch.MixinTweaker", true, classLoader);
+                ITweaker tweaker = (ITweaker) tweakerClass.getConstructor().newInstance();
+                tweaker.acceptOptions(new ArrayList<>(), mcDir, null, mccversion);
+                tweaker.injectIntoClassLoader(classLoader);
+            } catch (ClassNotFoundException | InvocationTargetException | InstantiationException | IllegalAccessException | NoSuchMethodException e) {
+                throw new RuntimeException(e);
+            }
         }
-
+        try {
+            if (loadedMixins.add(modFile.getName())) {
+                FMLRelaunchLog.info("Injecting Mixin Config for %s", modFile.getName());
+                try {
+                    classLoader.addURL(modFile.toURI().toURL());
+                    return new ContainerHandleURI(modFile.toURI());
+                } catch (MalformedURLException e) {
+                    FMLRelaunchLog.log(Level.ERROR, e, "Unable to convert file into a URL. weird");
+                }
+            }
+        } catch (Exception e) {
+            FMLRelaunchLog.log(Level.ERROR, e, "Unable to inject Mixin Config for %s", modFile.getName());
+        }
+        return null;
     }
 
     private static Field embedded = null;
@@ -376,20 +393,14 @@ public final class CoreModManagerV2 extends CoreModManager {
         }
     }
 
-    public static Method getADDURL() throws NoSuchMethodException {
-        if (ADDURL == null) {
-            ADDURL = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
-            ADDURL.setAccessible(true);
-        }
-
-        return ADDURL;
-
-    }
-
     public static void handleCascadingTweak(File coreMod, JarFile jar, String cascadedTweaker, LaunchClassLoader classLoader, Integer sortingOrder) {
         try {
             // Have to manually stuff the tweaker into the parent classloader
-            getADDURL().invoke(classLoader.getClass().getClassLoader(), coreMod.toURI().toURL());
+            if (ADDURL == null) {
+                ADDURL = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
+                ADDURL.setAccessible(true);
+            }
+            ADDURL.invoke(classLoader.getClass().getClassLoader(), coreMod.toURI().toURL());
             classLoader.addURL(coreMod.toURI().toURL());
             CoreModManager.tweaker.injectCascadingTweak(cascadedTweaker);
             tweakSorting.put(cascadedTweaker, sortingOrder);
