@@ -53,6 +53,9 @@ public class MetadataCollectionV2 extends MetadataCollection {
         } catch (JsonParseException e) {
             FMLLog.log(Level.ERROR, e, "The mcmod.info file in %s cannot be parsed as valid JSON. It will be ignored", sourceName);
             return new MetadataCollectionV2();
+        } catch (NullPointerException e) {
+            FMLLog.log(Level.ERROR, e, "The mcmod.info file in %s is invalid. It will be ignored", sourceName);
+            return new MetadataCollectionV2();
         } catch (Exception e) {
             throw Throwables.propagate(e);
         }
