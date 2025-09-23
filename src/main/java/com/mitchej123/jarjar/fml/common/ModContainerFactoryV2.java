@@ -29,6 +29,9 @@ public class ModContainerFactoryV2 extends ModContainerFactory {
                     FMLLog.log(Level.ERROR, e, "Unable to construct %s container", ann.getASMType().getClassName());
                     return null;
                 }
+            } else if (!candidate.containsAPIAnnotations() && "Lcpw/mods/fml/common/API;".equals(ann.getASMType().getDescriptor())) {
+                candidate.setContainsAPI(true);
+                FMLLog.fine("Found @API annotation in %s (%s)", candidate.getFilename(), className);
             }
         }
         return null;

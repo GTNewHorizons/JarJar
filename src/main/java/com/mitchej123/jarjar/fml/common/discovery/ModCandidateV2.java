@@ -24,6 +24,7 @@ public class ModCandidateV2 extends ModCandidate implements SortableCandidate {
     private String cascadedTweaker = null;
     private String fmlCorePlugin = null;
     private boolean containsMod = false;
+    private boolean containsAPI = false;
 
     private Collection<ModCandidateV2> nestedModcandidates = null;
     private Collection<ModCandidateV2> parentModcandidates;
@@ -106,6 +107,15 @@ public class ModCandidateV2 extends ModCandidate implements SortableCandidate {
 
     public boolean containsMod() {
         return containsMod;
+    }
+
+    public ModCandidateV2 setContainsAPI(boolean containsAPI) {
+        this.containsAPI = containsAPI;
+        return this;
+    }
+
+    public boolean containsAPIAnnotations() {
+        return containsAPI;
     }
 
     public boolean isNested() {
@@ -240,4 +250,5 @@ public class ModCandidateV2 extends ModCandidate implements SortableCandidate {
             asmData.sendToTable(table, this);
         }
     }
+
 }

@@ -5,6 +5,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.mitchej123.jarjar.discovery.ModCandidateV2Sorter;
 import com.mitchej123.jarjar.discovery.ParallellModDiscoverer;
+import com.mitchej123.jarjar.discovery.SortableCandidate;
 import com.mitchej123.jarjar.fml.common.discovery.ModCandidateV2;
 import cpw.mods.fml.common.CertificateHelper;
 import cpw.mods.fml.common.FMLLog;
@@ -147,15 +148,22 @@ public class LoaderV2 extends Loader {
 
         modCandidates.sort(Comparator.comparing(ModCandidateV2::getId, String.CASE_INSENSITIVE_ORDER));
         // Build up the list of potential mods
-        final List<ModContainerWrapper> modList = Lists.newArrayList();
+        final List<SortableCandidate> sortableCandidates = Lists.newArrayList();
         for (ModCandidateV2 candidate : modCandidates) {
             try {
 
                 final List<ModContainerWrapper> mods = candidate.getWrappedMods();
-                if (mods.isEmpty() && !candidate.isClasspath()) {
+                if (mods.isEmpty() && !candidate.isClasspath() && !candidate.containsAPIAnnotations()) {
+                    FMLLog.fine("Adding %s to non-mod libs (no mods, no APIs)", candidate.getFilename());
                     nonModLibs.add(candidate.getModContainer());
                 } else {
-                    modList.addAll(mods);
+                    if (mods.isEmpty() && candidate.containsAPIAnnotations()) {
+                        FMLLog.info("Including API-only jar %s in mod processing", candidate.getFilename());
+                        // Create APIOnlyWrapper so API-only candidates participate in sorting
+                        sortableCandidates.add(new APIOnlyWrapper(candidate));
+                    } else {
+                        sortableCandidates.addAll(mods);
+                    }
                 }
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -164,18 +172,30 @@ public class LoaderV2 extends Loader {
 
         // TODO: Group mods by file and ensure that all mods in a file get ignored if one is marked as ignored
         // Maybe run the resolver on the candidates instead of the mods....
-        final Optional<List<ModContainerWrapper>> resolvedMods = new ModCandidateV2Sorter<>(modList, null).resolve();
-        if (!resolvedMods.isPresent()) {
+        final Optional<List<SortableCandidate>> resolvedCandidates = new ModCandidateV2Sorter<>(sortableCandidates, null).resolve();
+        if (!resolvedCandidates.isPresent()) {
             FMLRelaunchLog.log(Level.ERROR, "There was a critical error during mod resolution, check the log for details");
             throw new RuntimeException("There was a critical error during mod resolution");
         }
 
         final Set<ModCandidateV2> uniqueCandidates = new ReferenceOpenHashSet<>();
-        for (ModContainerWrapper wrapper : resolvedMods.get()) {
-            final ModContainer mod = wrapper.mod();
-            uniqueCandidates.add(wrapper.candidate());
-            dataTable.addContainer(mod);
-            mods.add(mod);
+        for (SortableCandidate sortable : resolvedCandidates.get()) {
+            if (sortable instanceof ModContainerWrapper wrapper) {
+                final ModContainer mod = wrapper.mod();
+                uniqueCandidates.add(wrapper.candidate());
+                dataTable.addContainer(mod);
+                mods.add(mod);
+            } else if (sortable instanceof APIOnlyWrapper apiWrapper) {
+                // API-only candidates need their annotation data sent to ASM table
+                // and their jar added to classpath for runtime class availability
+                final ModCandidateV2 candidate = apiWrapper.candidate();
+                uniqueCandidates.add(candidate);
+                try {
+                    modClassLoader.addFile(candidate.getModContainer());
+                } catch (MalformedURLException e) {
+                    FMLLog.log(Level.ERROR, e, "Failed to add API-only jar %s to classpath", candidate.getFilename());
+                }
+            }
         }
         for (ModCandidateV2 candidate : uniqueCandidates) {
             candidate.sendToTable(dataTable);
