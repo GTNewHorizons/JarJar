@@ -1,5 +1,7 @@
 package com.mitchej123.jarjar.discovery;
 
+import com.mitchej123.jarjar.config.CoremodExemptions;
+import com.mitchej123.jarjar.fml.common.discovery.ModCandidateV2;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -53,6 +55,26 @@ public class ModCandidateV2Sorter<T extends SortableCandidate> {
             if (equalIdCandidates.size() < 2) {
                 continue;
             }
+
+            // Check if this is a coremod that should be exempt from duplicate detection
+            boolean isExemptCoremod = false;
+            // We only need to check one at this point since they're all the same
+            if (equalIdCandidates.get(0) instanceof ModCandidateV2 firstCandidate) {
+                if (firstCandidate.hasCoreMod()) {
+                    String coremodClassName = firstCandidate.getCoreMod();
+                    if (CoremodExemptions.isExempt(coremodClassName)) {
+                        isExemptCoremod = true;
+                        LOGGER.info("Skipping duplicate detection for exempt coremod: {} (found in {} mods)",
+                                   coremodClassName, equalIdCandidates.size());
+                    }
+                }
+            }
+
+            if (isExemptCoremod) {
+                // Skip duplicate detection for exempt coremods
+                continue;
+            }
+
             T newest = null;
             for (final T it : equalIdCandidates) {
                 if (disabled.contains(it)) {
