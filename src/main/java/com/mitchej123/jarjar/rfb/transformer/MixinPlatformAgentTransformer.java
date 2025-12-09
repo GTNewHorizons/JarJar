@@ -28,6 +28,11 @@ public class MixinPlatformAgentTransformer implements RfbClassTransformer  {
     }
 
     @Override
+    public @NotNull String @Nullable [] additionalExclusions() {
+        return new String[]{"com.mitchej123.jarjar.", "com.gtnewhorizon.gtnhlib.", "org.lwjgl."};
+    }
+
+    @Override
     public boolean shouldTransformClass(@NotNull ExtensibleClassLoader classLoader, @NotNull Context context, @Nullable Manifest manifest, @NotNull String className, @NotNull ClassNodeHandle classNode) {
         return cstPoolParser.find(classNode.getOriginalBytes(), false);
     }

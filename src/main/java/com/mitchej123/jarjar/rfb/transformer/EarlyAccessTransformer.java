@@ -50,11 +50,11 @@ public class EarlyAccessTransformer implements RfbClassTransformer {
     public void transformClass(@NotNull ExtensibleClassLoader classLoader, @NotNull RfbClassTransformer.Context context, @Nullable Manifest manifest,
         @NotNull String className, @NotNull ClassNodeHandle classNode) {
         final @Nullable ClassNode cn = classNode.getNode();
-
         if (cn == null || cn.fields == null) {
             return;
         }
 
+        // Make class public
         cn.access &= ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED);
         cn.access |= Opcodes.ACC_PUBLIC;
 
@@ -63,6 +63,7 @@ public class EarlyAccessTransformer implements RfbClassTransformer {
             field.access &= ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED);
             field.access |= Opcodes.ACC_PUBLIC;
         }
+
         // Make all methods public
         if (cn.methods != null) {
             for (MethodNode method : cn.methods) {
@@ -70,7 +71,8 @@ public class EarlyAccessTransformer implements RfbClassTransformer {
                 method.access |= Opcodes.ACC_PUBLIC;
             }
         }
-        // Make all inner classes public
+
+        // Make FMLPluginWrapper inner class public
         if (cn.innerClasses != null) {
             for (InnerClassNode innerClass : cn.innerClasses) {
                 if (innerClass.name.endsWith("FMLPluginWrapper")) {

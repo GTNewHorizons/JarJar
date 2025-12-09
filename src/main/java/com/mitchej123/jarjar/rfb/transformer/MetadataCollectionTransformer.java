@@ -1,21 +1,22 @@
 package com.mitchej123.jarjar.rfb.transformer;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Set;
-import java.util.jar.Manifest;
-
+import com.gtnewhorizons.retrofuturabootstrap.api.ClassNodeHandle;
+import com.gtnewhorizons.retrofuturabootstrap.api.ExtensibleClassLoader;
+import com.gtnewhorizons.retrofuturabootstrap.api.RfbClassTransformer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
 
-import com.google.common.collect.ImmutableSet;
-import com.gtnewhorizons.retrofuturabootstrap.api.ClassNodeHandle;
-import com.gtnewhorizons.retrofuturabootstrap.api.ExtensibleClassLoader;
-import com.gtnewhorizons.retrofuturabootstrap.api.RfbClassTransformer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.jar.Manifest;
 
+/**
+ * Adds SerializedName annotation to MetadataCollection.modList field.
+ * This fixes GSON deserialization for mcmod.info files that use different casing for modList.
+ */
 public class MetadataCollectionTransformer implements RfbClassTransformer {
     private static final String TARGET_CLASS = "cpw.mods.fml.common.MetadataCollection";
     private static final String TARGET_FIELD = "modList";
@@ -31,12 +32,10 @@ public class MetadataCollectionTransformer implements RfbClassTransformer {
         return new String[] { "*" };
     }
 
-    private static final Set<String> TARGET_CLASSES = ImmutableSet.of(TARGET_CLASS);
-
     @Override
     public boolean shouldTransformClass(@NotNull ExtensibleClassLoader classLoader, @NotNull RfbClassTransformer.Context context, @Nullable Manifest manifest,
         @NotNull String className, @NotNull ClassNodeHandle classNode) {
-        return TARGET_CLASSES.contains(className);
+        return className.equals(TARGET_CLASS);
     }
 
     @Override

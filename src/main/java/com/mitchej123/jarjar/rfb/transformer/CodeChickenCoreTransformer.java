@@ -18,6 +18,8 @@ import java.util.jar.Manifest;
 
 public class CodeChickenCoreTransformer implements RfbClassTransformer {
 
+    private static final String TARGET_CLASS = "codechicken.core.ClassDiscoverer";
+
     @Override
     public @NotNull String id() {
         return "jarjar-codechickencoretransformer";
@@ -26,14 +28,13 @@ public class CodeChickenCoreTransformer implements RfbClassTransformer {
     @Override
     public boolean shouldTransformClass(@NotNull ExtensibleClassLoader classLoader, @NotNull Context context, @Nullable Manifest manifest,
         @NotNull String className, @NotNull ClassNodeHandle classNode) {
-        return className.equals("codechicken.core.ClassDiscoverer");
+        return className.equals(TARGET_CLASS);
     }
 
     @Override
     public void transformClass(@NotNull ExtensibleClassLoader classLoader, @NotNull Context context, @Nullable Manifest manifest, @NotNull String className, @NotNull ClassNodeHandle classNode) {
         final @Nullable ClassNode cn = classNode.getNode();
-
-        if (cn == null || cn.fields == null) {
+        if (cn == null || cn.methods == null) {
             return;
         }
 

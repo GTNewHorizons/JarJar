@@ -1,5 +1,6 @@
 package com.mitchej123.jarjar.rfb.transformer;
 
+import com.google.common.collect.ImmutableSet;
 import com.gtnewhorizons.retrofuturabootstrap.api.ClassNodeHandle;
 import com.gtnewhorizons.retrofuturabootstrap.api.ExtensibleClassLoader;
 import com.gtnewhorizons.retrofuturabootstrap.api.RfbClassTransformer;
@@ -12,15 +13,17 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 
+import java.util.Set;
 import java.util.jar.Manifest;
 
 public class V2ConstructionReplacerTransformer implements RfbClassTransformer {
+
     private static final String LOADER_CLASS = "cpw/mods/fml/common/Loader";
-    private static final String LOADER_CLASSNAME = LOADER_CLASS.replace("/", ".");
+    private static final String LOADER_CLASSNAME = "cpw.mods.fml.common.Loader";
     private static final String LOADER_V2_CLASS = "com/mitchej123/jarjar/fml/common/LoaderV2";
 
     private static final String MOD_CONTAINER_FACTORY_CLASS = "cpw/mods/fml/common/ModContainerFactory";
-    private static final String MOD_CONTAINER_FACTORY_CLASSNAME = MOD_CONTAINER_FACTORY_CLASS.replace("/", ".");
+    private static final String MOD_CONTAINER_FACTORY_CLASSNAME = "cpw.mods.fml.common.ModContainerFactory";
     private static final String MOD_CONTAINER_FACTORY_V2_CLASS = "com/mitchej123/jarjar/fml/common/ModContainerFactoryV2";
 
     private static final String MOD_DISCOVERER_CLASSNAME = "cpw.mods.fml.common.discovery.ModDiscoverer";
@@ -30,6 +33,10 @@ public class V2ConstructionReplacerTransformer implements RfbClassTransformer {
     private static final String ASM_MOD_PARSER_CLASSNAME = "cpw.mods.fml.common.discovery.asm.ASMModParser";
     private static final String MOD_ANNOTATION_CLASS = "cpw/mods/fml/common/discovery/asm/ModClassVisitor";
     private static final String MOD_ANNOTATION_V2_CLASS = "com/mitchej123/jarjar/fml/common/discovery/asm/ModClassVisitorV2";
+
+    private static final Set<String> TARGET_CLASSES = ImmutableSet.of(
+        LOADER_CLASSNAME, LOADER_CLASS, MOD_CONTAINER_FACTORY_CLASSNAME, MOD_CONTAINER_FACTORY_CLASS,
+        MOD_DISCOVERER_CLASSNAME, ASM_MOD_PARSER_CLASSNAME);
 
     @Override
     public @NotNull String id() {
@@ -43,7 +50,7 @@ public class V2ConstructionReplacerTransformer implements RfbClassTransformer {
 
     @Override
     public boolean shouldTransformClass(@NotNull ExtensibleClassLoader classLoader, @NotNull RfbClassTransformer.Context context, @Nullable Manifest manifest, @NotNull String className, @NotNull ClassNodeHandle classNode) {
-        return className.equals(LOADER_CLASSNAME) || className.equals(MOD_CONTAINER_FACTORY_CLASSNAME) || className.equals(MOD_DISCOVERER_CLASSNAME) || className.equals(ASM_MOD_PARSER_CLASSNAME);
+        return TARGET_CLASSES.contains(className);
     }
 
     @Override
@@ -53,18 +60,11 @@ public class V2ConstructionReplacerTransformer implements RfbClassTransformer {
             return;
         }
 
-
-        if (className.equals(LOADER_CLASSNAME)) {
-            transformClass(cn, "instance", "()Lcpw/mods/fml/common/Loader;", LOADER_CLASS, LOADER_V2_CLASS, "()V", null);
-        } else if (className.equals(MOD_CONTAINER_FACTORY_CLASSNAME)) {
-            // if (!mn.name.equals("<clinit>") && mn.desc.equals("()V")) continue;
-            transformClass(cn, "<clinit>", "()V", MOD_CONTAINER_FACTORY_CLASS, MOD_CONTAINER_FACTORY_V2_CLASS, "()V", null);
-        } else if (className.equals(MOD_DISCOVERER_CLASSNAME)) {
-            // if (!mn.name.equals("<init>") && mn.desc.equals("()V")) continue;
-            transformClass(cn, "<init>", "()V", ASM_DATA_TABLE_CLASS, ASM_DATA_TABLE_V2_CLASS, "()V", null);
-        } else if (className.equals(ASM_MOD_PARSER_CLASSNAME)) {
-            // "<init>", "(Ljava/io/InputStream;)V"
-            transformClass(cn, "<init>", "(Ljava/io/InputStream;)V", MOD_ANNOTATION_CLASS, MOD_ANNOTATION_V2_CLASS, "(Lcpw/mods/fml/common/discovery/asm/ASMModParser;)V", "(Lcom/mitchej123/jarjar/fml/common/discovery/asm/ASMModParserV2;)V");
+        switch (className) {
+            case LOADER_CLASSNAME -> transformClass(cn, "instance", "()Lcpw/mods/fml/common/Loader;", LOADER_CLASS, LOADER_V2_CLASS, "()V", null);
+            case MOD_CONTAINER_FACTORY_CLASSNAME -> transformClass(cn, "<clinit>", "()V", MOD_CONTAINER_FACTORY_CLASS, MOD_CONTAINER_FACTORY_V2_CLASS, "()V", null);
+            case MOD_DISCOVERER_CLASSNAME -> transformClass(cn, "<init>", "()V", ASM_DATA_TABLE_CLASS, ASM_DATA_TABLE_V2_CLASS, "()V", null);
+            case ASM_MOD_PARSER_CLASSNAME -> transformClass(cn, "<init>", "(Ljava/io/InputStream;)V", MOD_ANNOTATION_CLASS, MOD_ANNOTATION_V2_CLASS, "(Lcpw/mods/fml/common/discovery/asm/ASMModParser;)V", "(Lcom/mitchej123/jarjar/fml/common/discovery/asm/ASMModParserV2;)V");
         }
     }
 

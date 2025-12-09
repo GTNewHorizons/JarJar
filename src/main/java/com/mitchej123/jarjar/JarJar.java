@@ -9,7 +9,7 @@ import cpw.mods.fml.common.event.FMLServerStartingEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-@Mod(modid = JarJar.MODID, version = Tags.VERSION, name = "JarJar", acceptedMinecraftVersions = "[1.7.10]", acceptableRemoteVersions = "*")
+@Mod(modid = JarJar.MODID, version = Tags.VERSION, name = "JarJar", acceptedMinecraftVersions = "[1.7.10]", acceptableRemoteVersions = "*", guiFactory = "com.mitchej123.jarjar.client.JarJarGuiFactory")
 public class JarJar {
 
     public static final String MODID = "jarjar";

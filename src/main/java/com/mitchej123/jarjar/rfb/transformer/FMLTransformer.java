@@ -17,6 +17,9 @@ import org.objectweb.asm.tree.VarInsnNode;
 
 import java.util.jar.Manifest;
 
+/**
+ * Redirects FML static method calls to V2 implementations.
+ */
 public class FMLTransformer implements RfbClassTransformer {
     public static final String CORE_MOD_MANAGER = "cpw/mods/fml/relauncher/CoreModManager";
     public static final String CORE_MOD_MANAGER_V2 = "com/mitchej123/jarjar/fml/relauncher/CoreModManagerV2";
@@ -43,7 +46,7 @@ public class FMLTransformer implements RfbClassTransformer {
 
     @Override
     public @NotNull String @Nullable [] additionalExclusions() {
-        return new String[]{"com.mitchej123.jarjar.fml."};
+        return new String[]{"com.mitchej123.jarjar.", "com.gtnewhorizon.gtnhlib.", "org.lwjgl."};
     }
 
     @Override
