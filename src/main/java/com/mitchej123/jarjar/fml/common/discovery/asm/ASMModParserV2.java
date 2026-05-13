@@ -20,17 +20,27 @@
 package com.mitchej123.jarjar.fml.common.discovery.asm;
 
 import com.google.common.collect.Sets;
+import com.gtnewhorizon.gtnhlib.asm.ClassConstantPoolParser;
+import com.gtnewhorizons.retrofuturabootstrap.api.ClassHeaderMetadata;
 import cpw.mods.fml.common.discovery.ASMDataTable;
 import cpw.mods.fml.common.discovery.ModCandidate;
 import cpw.mods.fml.common.discovery.asm.ASMModParser;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
 import org.spongepowered.libraries.com.google.common.base.MoreObjects;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 public class ASMModParserV2 extends ASMModParser {
+
+    private static final ClassConstantPoolParser PRESCAN = new ClassConstantPoolParser("RuntimeVisibleAnnotations", "RuntimeVisibleParameterAnnotations");
+    private static final String DUMMY_MARKER_INTERNAL_NAME = "$JarJarDummy";
+    private static final byte[] DUMMY_CLASS_BYTES = buildDummyClassBytes();
 
     private final String classEntry;
     private Set<String> interfaces;
@@ -39,6 +49,22 @@ public class ASMModParserV2 extends ASMModParser {
     public ASMModParserV2(InputStream stream, String classEntry) throws IOException {
         super(stream);
         this.classEntry = classEntry;
+    }
+
+    public ASMModParserV2(byte[] classBytes, String classEntry) throws IOException {
+        super(new ByteArrayInputStream(PRESCAN.find(classBytes, false) ? classBytes : DUMMY_CLASS_BYTES));
+        this.classEntry = classEntry;
+        if (DUMMY_MARKER_INTERNAL_NAME.equals(getASMType().getInternalName())) {
+            try {
+                final ClassHeaderMetadata header = new ClassHeaderMetadata(classBytes);
+                final List<String> ifaceNames = header.binaryInterfaceNames;
+                beginNewTypeName(
+                    header.binaryThisName,
+                    header.majorVersion,
+                    header.binarySuperName,
+                    ifaceNames.toArray(new String[0]));
+            } catch (IllegalArgumentException ignored) {}
+        }
     }
 
     public String getClassEntry() {
@@ -68,8 +94,16 @@ public class ASMModParserV2 extends ASMModParser {
     public void sendToTable(ASMDataTable table, ModCandidate candidate) {
         super.sendToTable(table, candidate);
 
+        if (interfaces == null) return;
         for (String intf : interfaces) {
             table.addASMData(candidate, intf, getASMType().getInternalName(), null, null);
         }
+    }
+
+    private static byte[] buildDummyClassBytes() {
+        final ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, DUMMY_MARKER_INTERNAL_NAME, null, "java/lang/Object", null);
+        cw.visitEnd();
+        return cw.toByteArray();
     }
 }

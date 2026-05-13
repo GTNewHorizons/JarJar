@@ -251,4 +251,17 @@ public class ModCandidateV2 extends ModCandidate implements SortableCandidate {
         }
     }
 
+    public void releaseParsedData() {
+        this.asmDataCollection = Collections.emptyList();
+        this.metadataCollection = null;
+    }
+
+    public void releaseAccessTransformers() {
+        this.accessTransformers = null;
+    }
+
+    public void releaseNestedJars() {
+        this.nestedJars = null;
+    }
+
 }

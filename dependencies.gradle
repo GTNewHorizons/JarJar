@@ -39,11 +39,11 @@ dependencies {
     compileOnly('org.jetbrains:annotations:24.0.1')
 
     // Dependencies
-    api("com.gtnewhorizons.retrofuturabootstrap:RetroFuturaBootstrap:1.0.9") { transitive = false }
-    implementation( "io.github.legacymoddingmc:unimixins:0.1.20:dev")
-    api("com.github.GTNewHorizons:GTNHLib:0.6.11:dev")
+    api("com.gtnewhorizons.retrofuturabootstrap:RetroFuturaBootstrap:1.0.16") { transitive = false }
+    implementation( "io.github.legacymoddingmc:unimixins:0.3.0:dev")
+    api("com.github.GTNewHorizons:GTNHLib:0.9.65:dev")
     api("org.apache.maven:maven-artifact:3.8.5")
-    api("io.github.legacymoddingmc:unimixins:0.1.20:dev")
+    api("io.github.legacymoddingmc:unimixins:0.3.0:dev")
 
     // Dev runtime only dependencies
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:StorageDrawers:2.1.0-GTNH:dev")

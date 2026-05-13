@@ -200,7 +200,7 @@ public class JarUtil {
         final List<String> modTypes = attributes.containsKey(CoreModManager.MODTYPE) ? Arrays.asList(attributes.getValue(CoreModManager.MODTYPE).split(",")) : ImmutableList.of("FML");
         if (!modTypes.contains("FML") && (!modCandidate.hasTweaker() || !coremodPass)) {
             FMLRelaunchLog.fine("Adding %s to the list of things to skip. It is not an FML mod,  it has types %s", modFile.getName(), modTypes);
-            if(coremodPass) CoreModManager.loadedCoremods.add(modFile.getName());
+            if(coremodPass) addLoadedCoremod(modFile.getName());
             return null;
         }
 
@@ -209,7 +209,7 @@ public class JarUtil {
             FMLRelaunchLog.fine(
                 "Mod %s has ModSide meta-inf value %s, and we're %s. It will be ignored",
                 modFile.getName(), modSide, FMLLaunchHandler.side.name());
-            if(coremodPass) CoreModManager.loadedCoremods.add(modFile.getName());
+            if(coremodPass) addLoadedCoremod(modFile.getName());
             return null;
         }
 
@@ -238,6 +238,12 @@ public class JarUtil {
         return nestedMods;
     }
 
+
+    private static void addLoadedCoremod(String name) {
+        synchronized (CoreModManager.loadedCoremods) {
+            CoreModManager.loadedCoremods.add(name);
+        }
+    }
 
     public static List<NestedJar> checkNestedJars(JarFile jar) throws IOException {
         final Manifest manifest = jar.getManifest();

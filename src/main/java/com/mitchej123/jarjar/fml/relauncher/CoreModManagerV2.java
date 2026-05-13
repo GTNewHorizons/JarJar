@@ -5,10 +5,10 @@
 package com.mitchej123.jarjar.fml.relauncher;
 
 import com.google.common.base.Throwables;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ObjectArrays;
 import com.mitchej123.jarjar.discovery.ModCandidateV2Sorter;
 import com.mitchej123.jarjar.fml.common.discovery.ModCandidateV2;
+import com.mitchej123.jarjar.util.DiscoveryPool;
 import com.mitchej123.jarjar.util.JarUtil;
 import cpw.mods.fml.common.asm.transformers.ModAccessTransformer;
 import cpw.mods.fml.common.discovery.ContainerType;
@@ -31,8 +31,11 @@ import java.io.File;
 import java.io.FileFilter;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -46,6 +49,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
+
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
@@ -76,6 +83,31 @@ public final class CoreModManagerV2 extends CoreModManager {
     private static File nestedDir;
 
     private final static List<ModCandidateV2> modCandidates = new ArrayList<>();
+
+    private static final MethodHandle ADD_URL_HANDLE;
+    static {
+        MethodHandle handle = null;
+        try {
+            final Method m = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
+            m.setAccessible(true);
+            handle = MethodHandles.lookup().unreflect(m);
+        } catch (Throwable t) {
+            FMLRelaunchLog.log(Level.WARN, t, "URLClassLoader.addURL handle unavailable; parent-addURL will be skipped");
+        }
+        ADD_URL_HANDLE = handle;
+    }
+
+    private static void addUrlToLoaderAndParent(LaunchClassLoader classLoader, URL url) {
+        final ClassLoader parent = classLoader.getClass().getClassLoader();
+        if (ADD_URL_HANDLE != null && parent instanceof URLClassLoader) {
+            try {
+                ADD_URL_HANDLE.invokeExact((URLClassLoader) parent, url);
+            } catch (Throwable t) {
+                FMLRelaunchLog.log(Level.WARN, t, "addURL on parent failed for %s", url);
+            }
+        }
+        classLoader.addURL(url);
+    }
 
     public static void handleLaunch(File mcDir, LaunchClassLoader classLoader, FMLTweaker tweaker) {
         CoreModManager.mcDir = mcDir;
@@ -251,18 +283,31 @@ public final class CoreModManagerV2 extends CoreModManager {
         FileListHelper.sortFileList(coreModList);
 
         final List<File> modFilesToExample = new ArrayList<>(Arrays.asList(coreModList));
-
+        final ForkJoinPool pool = DiscoveryPool.get();
+        final List<Future<ModCandidateV2>> futures = new ArrayList<>(modFilesToExample.size());
         for (File modFile : modFilesToExample) {
             FMLRelaunchLog.fine("Examining for coremod candidacy %s", modFile.getName());
-            final ModCandidateV2 modCandidate = JarUtil.examineModCandidate(modFile, null, true);
+            futures.add(pool.submit(() -> JarUtil.examineModCandidate(modFile, null, true)));
+        }
+
+        for (int i = 0; i < futures.size(); i++) {
+            final ModCandidateV2 modCandidate;
+            try {
+                modCandidate = futures.get(i).get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Coremod discovery interrupted", e);
+            } catch (ExecutionException e) {
+                throw new RuntimeException("Error examining coremod " + modFilesToExample.get(i).getName(), e.getCause() != null ? e.getCause() : e);
+            }
             if (modCandidate == null) continue;
-            if(modCandidate.hasCoreMod() && loadedByCommandLine.contains(modCandidate.getCoreMod())) {
+            if (modCandidate.hasCoreMod() && loadedByCommandLine.contains(modCandidate.getCoreMod())) {
                 FMLRelaunchLog.info("Skipping coremod previously loaded via command line %s", modCandidate.getCoreMod());
                 continue;
             }
 
             modCandidates.add(modCandidate);
-            if(modCandidate.hasNestedMods()) {
+            if (modCandidate.hasNestedMods()) {
                 modCandidates.addAll(modCandidate.getNestedModcandidates());
             }
         }
@@ -282,6 +327,17 @@ public final class CoreModManagerV2 extends CoreModManager {
         }
         modCandidates.clear();
         modCandidates.addAll(resolvedCandidates.get());
+
+        for (ModCandidateV2 candidate : modCandidates) {
+            final File jar = candidate.getModContainer();
+            if (jar == null) continue;
+            try {
+                addUrlToLoaderAndParent(classLoader, jar.toURI().toURL());
+            } catch (MalformedURLException e) {
+                FMLRelaunchLog.log(Level.WARN, e, "Skipping bad URL for %s", jar);
+            }
+        }
+
         final List<IContainerHandle> mixinHandlers = new ArrayList<>();
 
         for (ModCandidateV2 candidate : modCandidates) {
@@ -289,6 +345,7 @@ public final class CoreModManagerV2 extends CoreModManager {
             FMLRelaunchLog.info("Examining %s to load", modFile.getName());
             if (candidate.hasAccessTransformers()) {
                 addModAccessTransformers(candidate.getAccessTransformers());
+                candidate.releaseAccessTransformers();
             }
             if (candidate.hasTweaker()) {
                 FMLRelaunchLog.info("Tweaker is %s", candidate.getTweaker());
@@ -395,13 +452,7 @@ public final class CoreModManagerV2 extends CoreModManager {
 
     public static void handleCascadingTweak(File coreMod, JarFile jar, String cascadedTweaker, LaunchClassLoader classLoader, Integer sortingOrder) {
         try {
-            // Have to manually stuff the tweaker into the parent classloader
-            if (ADDURL == null) {
-                ADDURL = URLClassLoader.class.getDeclaredMethod("addURL", URL.class);
-                ADDURL.setAccessible(true);
-            }
-            ADDURL.invoke(classLoader.getClass().getClassLoader(), coreMod.toURI().toURL());
-            classLoader.addURL(coreMod.toURI().toURL());
+            addUrlToLoaderAndParent(classLoader, coreMod.toURI().toURL());
             CoreModManager.tweaker.injectCascadingTweak(cascadedTweaker);
             tweakSorting.put(cascadedTweaker, sortingOrder);
         } catch (Exception e) {
