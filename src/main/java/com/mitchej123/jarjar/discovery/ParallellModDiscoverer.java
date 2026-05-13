@@ -27,6 +27,7 @@ import com.mitchej123.jarjar.fml.common.discovery.asm.ASMModParserV2;
 import com.mitchej123.jarjar.fml.common.discovery.finder.ClasspathModCandidateFinder;
 import com.mitchej123.jarjar.fml.common.discovery.finder.DirectoryModCandidateFinder;
 import com.mitchej123.jarjar.fml.common.discovery.finder.ModCandidateFinder;
+import com.mitchej123.jarjar.util.DiscoveryPool;
 import com.mitchej123.jarjar.util.JarUtil;
 import com.mitchej123.jarjar.util.RewindableModInputStream;
 import cpw.mods.fml.common.FMLLog;
@@ -105,7 +106,7 @@ public class ParallellModDiscoverer extends ModDiscoverer {
     public final void discoverMods() {  // throws LoaderException
         LOGGER.info(String.format("Mod discovery started in %s", mcDir));
         long startTime = System.nanoTime();
-        ForkJoinPool pool = new ForkJoinPool();
+        ForkJoinPool pool = DiscoveryPool.get();
         Set<Path> processedPaths = new HashSet<>(); // suppresses duplicate paths
         List<Future<ModCandidateV2>> futures = new ArrayList<>();
 
@@ -136,17 +137,9 @@ public class ParallellModDiscoverer extends ModDiscoverer {
         if (timeout <= 0) timeout = Integer.MAX_VALUE;
 
         try {
-            pool.shutdown();
-
-            pool.awaitTermination(timeout, TimeUnit.SECONDS);
-
             for (Future<ModCandidateV2> future : futures) {
-                if (!future.isDone()) {
-                    throw new TimeoutException();
-                }
-
                 try {
-                    ModCandidateV2 candidate = future.get();
+                    ModCandidateV2 candidate = future.get(timeout, TimeUnit.SECONDS);
                     if (candidate != null) candidates.add(candidate);
                 } catch (ExecutionException e) {
                     exception = new RuntimeException("Mod discovery failed!", e);
@@ -155,12 +148,8 @@ public class ParallellModDiscoverer extends ModDiscoverer {
 
             for (NestedModInitData data : nestedModInitDatas) {
                 for (Future<ModCandidateV2> future : data.futures) {
-                    if (!future.isDone()) {
-                        throw new TimeoutException();
-                    }
-
                     try {
-                        ModCandidateV2 candidate = future.get();
+                        ModCandidateV2 candidate = future.get(timeout, TimeUnit.SECONDS);
                         if (candidate != null) data.target.add(candidate);
                     } catch (ExecutionException e) {
                         exception = new RuntimeException("Mod discovery failed!", e);
@@ -203,6 +192,13 @@ public class ParallellModDiscoverer extends ModDiscoverer {
 
         modCandidates.addAll(ret);
         modCandidates.sort(Comparator.comparing(candidate -> candidate.getModContainer().getName()));
+
+        for (ModCandidateV2 c : modCandidates) {
+            c.releaseNestedJars();
+        }
+        candidateFinders.clear();
+        jijDedupMap.clear();
+        nestedModInitDatas.clear();
     }
 
     private static class NestedModInitData {
@@ -309,8 +305,9 @@ public class ParallellModDiscoverer extends ModDiscoverer {
 
                 Enumeration<JarEntry> entries = jar.entries();
                 final ModContainerFactoryV2 modContainerFactory = (ModContainerFactoryV2) ModContainerFactory.instance();
-                final List<ModContainerWrapper> wrappedModList = new ArrayList<>();
-                final List<ModContainer> modList = new ArrayList<>();
+                final int sizeHint = Math.max(16, jar.size() / 8);
+                final List<ModContainerWrapper> wrappedModList = new ArrayList<>(sizeHint);
+                final List<ModContainer> modList = new ArrayList<>(sizeHint);
                 final List<ASMModParserV2> asmDataCollection = modCandidate.getAsmDataCollection();
                 modCandidate.setWrappedMods(wrappedModList);
                 modCandidate.setMods(modList);
@@ -320,8 +317,15 @@ public class ParallellModDiscoverer extends ModDiscoverer {
                     final String entryName = entry.getName();
                     final ASMModParserV2 asmData;
                     if (entry.isDirectory() || entryName.startsWith("__MACOSX") || !entryName.endsWith(".class") || entryName.endsWith("$.class")) continue;
-                    try(final InputStream classStream = jar.getInputStream(entry)) {
-                        asmData = new ASMModParserV2(classStream, entryName);
+                    try (final InputStream classStream = jar.getInputStream(entry)) {
+                        final long entrySize = entry.getSize();
+                        if (entrySize >= 0) {
+                            final byte[] classBytes = new byte[(int) entrySize];
+                            classStream.readNBytes(classBytes, 0, classBytes.length);
+                            asmData = new ASMModParserV2(classBytes, entryName);
+                        } else {
+                            asmData = new ASMModParserV2(classStream, entryName);
+                        }
                     } catch (LoaderException e) {
                         FMLRelaunchLog.log(Level.ERROR, e, "There was a problem reading the entry %s in the jar %s - probably a corrupt zip", entryName, modFileName);
                         return null;
@@ -340,7 +344,6 @@ public class ParallellModDiscoverer extends ModDiscoverer {
             } catch (IOException ioe) {
                 FMLRelaunchLog.log(Level.ERROR, ioe, "Unable to read the jar file %s - ignoring", modFileName);
                 return null;
-
             }
             return modCandidate;
         }

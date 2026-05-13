@@ -21,6 +21,9 @@ public class MetadataCollectionV2 extends MetadataCollection {
     // Nested Jar files
     protected String[] jars;
 
+    private static final Gson GSON = new GsonBuilder().registerTypeAdapter(ArtifactVersion.class, new ArtifactVersionAdapter()).create();
+    private static final JsonParser PARSER = new JsonParser();
+
     @SuppressWarnings("deprecation")
     public static MetadataCollection from(InputStream inputStream, String sourceName) {
         if (inputStream == null) {
@@ -30,9 +33,7 @@ public class MetadataCollectionV2 extends MetadataCollection {
         InputStreamReader reader = new InputStreamReader(inputStream);
         try {
             final MetadataCollectionV2 collection;
-            final Gson gson = new GsonBuilder().registerTypeAdapter(ArtifactVersion.class, new ArtifactVersionAdapter()).create();
-            final JsonParser parser = new JsonParser();
-            final JsonElement rootElement = parser.parse(reader);
+            final JsonElement rootElement = PARSER.parse(reader);
             if (rootElement.isJsonArray()) {
                 collection = new MetadataCollectionV2();
                 final JsonArray jsonList = rootElement.getAsJsonArray();
@@ -40,10 +41,10 @@ public class MetadataCollectionV2 extends MetadataCollection {
                 collection.jars = new String[0];
                 int i = 0;
                 for (JsonElement mod : jsonList) {
-                    collection.modList[i++] = gson.fromJson(mod, ModMetadata.class);
+                    collection.modList[i++] = GSON.fromJson(mod, ModMetadata.class);
                 }
             } else {
-                collection = gson.fromJson(rootElement, MetadataCollectionV2.class);
+                collection = GSON.fromJson(rootElement, MetadataCollectionV2.class);
                 if(collection.jars == null) {
                     collection.jars = new String[0];
                 }

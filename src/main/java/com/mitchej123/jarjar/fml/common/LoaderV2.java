@@ -7,6 +7,7 @@ import com.mitchej123.jarjar.discovery.ModCandidateV2Sorter;
 import com.mitchej123.jarjar.discovery.ParallellModDiscoverer;
 import com.mitchej123.jarjar.discovery.SortableCandidate;
 import com.mitchej123.jarjar.fml.common.discovery.ModCandidateV2;
+import com.mitchej123.jarjar.util.DiscoveryPool;
 import cpw.mods.fml.common.CertificateHelper;
 import cpw.mods.fml.common.FMLLog;
 import cpw.mods.fml.common.InjectedModContainer;
@@ -199,11 +200,13 @@ public class LoaderV2 extends Loader {
         }
         for (ModCandidateV2 candidate : uniqueCandidates) {
             candidate.sendToTable(dataTable);
+            candidate.releaseParsedData();
         }
 
         identifyDuplicates(mods);
         namedMods = Maps.uniqueIndex(mods, new ModIdFunction());
         FMLLog.info("Forge Mod Loader has identified %d mod%s to load", mods.size(), mods.size() != 1 ? "s" : "");
+        DiscoveryPool.shutdown();
         return discoverer;
 
     }

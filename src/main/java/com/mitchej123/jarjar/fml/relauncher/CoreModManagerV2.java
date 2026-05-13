@@ -8,6 +8,7 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.ObjectArrays;
 import com.mitchej123.jarjar.discovery.ModCandidateV2Sorter;
 import com.mitchej123.jarjar.fml.common.discovery.ModCandidateV2;
+import com.mitchej123.jarjar.util.DiscoveryPool;
 import com.mitchej123.jarjar.util.JarUtil;
 import cpw.mods.fml.common.asm.transformers.ModAccessTransformer;
 import cpw.mods.fml.common.discovery.ContainerType;
@@ -48,6 +49,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
+
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
@@ -278,18 +283,31 @@ public final class CoreModManagerV2 extends CoreModManager {
         FileListHelper.sortFileList(coreModList);
 
         final List<File> modFilesToExample = new ArrayList<>(Arrays.asList(coreModList));
-
+        final ForkJoinPool pool = DiscoveryPool.get();
+        final List<Future<ModCandidateV2>> futures = new ArrayList<>(modFilesToExample.size());
         for (File modFile : modFilesToExample) {
             FMLRelaunchLog.fine("Examining for coremod candidacy %s", modFile.getName());
-            final ModCandidateV2 modCandidate = JarUtil.examineModCandidate(modFile, null, true);
+            futures.add(pool.submit(() -> JarUtil.examineModCandidate(modFile, null, true)));
+        }
+
+        for (int i = 0; i < futures.size(); i++) {
+            final ModCandidateV2 modCandidate;
+            try {
+                modCandidate = futures.get(i).get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Coremod discovery interrupted", e);
+            } catch (ExecutionException e) {
+                throw new RuntimeException("Error examining coremod " + modFilesToExample.get(i).getName(), e.getCause() != null ? e.getCause() : e);
+            }
             if (modCandidate == null) continue;
-            if(modCandidate.hasCoreMod() && loadedByCommandLine.contains(modCandidate.getCoreMod())) {
+            if (modCandidate.hasCoreMod() && loadedByCommandLine.contains(modCandidate.getCoreMod())) {
                 FMLRelaunchLog.info("Skipping coremod previously loaded via command line %s", modCandidate.getCoreMod());
                 continue;
             }
 
             modCandidates.add(modCandidate);
-            if(modCandidate.hasNestedMods()) {
+            if (modCandidate.hasNestedMods()) {
                 modCandidates.addAll(modCandidate.getNestedModcandidates());
             }
         }
@@ -327,6 +345,7 @@ public final class CoreModManagerV2 extends CoreModManager {
             FMLRelaunchLog.info("Examining %s to load", modFile.getName());
             if (candidate.hasAccessTransformers()) {
                 addModAccessTransformers(candidate.getAccessTransformers());
+                candidate.releaseAccessTransformers();
             }
             if (candidate.hasTweaker()) {
                 FMLRelaunchLog.info("Tweaker is %s", candidate.getTweaker());
