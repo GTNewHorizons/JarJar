@@ -23,13 +23,13 @@ import cpw.mods.fml.common.discovery.ModDiscoverer;
 import cpw.mods.fml.common.event.FMLLoadEvent;
 import cpw.mods.fml.common.functions.ModIdFunction;
 import cpw.mods.fml.relauncher.FMLRelaunchLog;
-import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.apache.logging.log4j.Level;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.net.MalformedURLException;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -146,7 +146,7 @@ public class LoaderV2 extends Loader {
         final List<ModCandidateV2> modCandidates = discoverer.getModCandidates();
         final List<File> nonModLibs = discoverer.getNonModLibs();
 
-        modCandidates.sort(Comparator.comparing(ModCandidateV2::getId, String.CASE_INSENSITIVE_ORDER));
+        modCandidates.sort(Comparator.comparing(c -> c.getModContainer().getName(), String.CASE_INSENSITIVE_ORDER));
         // Build up the list of potential mods
         final List<SortableCandidate> sortableCandidates = Lists.newArrayList();
         for (ModCandidateV2 candidate : modCandidates) {
@@ -178,7 +178,7 @@ public class LoaderV2 extends Loader {
             throw new RuntimeException("There was a critical error during mod resolution");
         }
 
-        final Set<ModCandidateV2> uniqueCandidates = new ReferenceOpenHashSet<>();
+        final Set<ModCandidateV2> uniqueCandidates = new LinkedHashSet<>();
         for (SortableCandidate sortable : resolvedCandidates.get()) {
             if (sortable instanceof ModContainerWrapper wrapper) {
                 final ModContainer mod = wrapper.mod();

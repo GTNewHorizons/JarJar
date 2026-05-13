@@ -6,11 +6,13 @@ import com.gtnewhorizons.retrofuturabootstrap.api.ExtensibleClassLoader;
 import com.gtnewhorizons.retrofuturabootstrap.api.RfbClassTransformer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
@@ -28,7 +30,13 @@ public class FMLTransformer implements RfbClassTransformer {
     public static final String HANDLE_LAUNCH_METHOD = "handleLaunch";
     public static final String HANDLE_LAUNCH_DESC = "(Ljava/io/File;Lnet/minecraft/launchwrapper/LaunchClassLoader;Lcpw/mods/fml/common/launcher/FMLTweaker;)V";
 
-    private static final String[] CLASS_CONSTANTS = new String[] { CORE_MOD_MANAGER, METADATA_COLLECTION };
+    public static final String ASM_MOD_PARSER = "cpw/mods/fml/common/discovery/asm/ASMModParser";
+    public static final String ASM_MOD_PARSER_CLASS_NAME = "cpw.mods.fml.common.discovery.asm.ASMModParser";
+    private static final String CLASS_READER = "org/objectweb/asm/ClassReader";
+    private static final String CLASS_VISITOR_ACCEPT_DESC = "(Lorg/objectweb/asm/ClassVisitor;I)V";
+    private static final int ASM_PARSE_SKIP_FLAGS = ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES;
+
+    private static final String[] CLASS_CONSTANTS = new String[] { CORE_MOD_MANAGER, METADATA_COLLECTION, ASM_MOD_PARSER };
     private static final ClassConstantPoolParser cstPoolParser = new ClassConstantPoolParser(CLASS_CONSTANTS);
 
     @Override
@@ -59,12 +67,18 @@ public class FMLTransformer implements RfbClassTransformer {
         }
 
         final boolean isCoreModManager = className.equals(CORE_MOD_MANAGER_CLASS_NAME);
+        final boolean isAsmModParser = className.equals(ASM_MOD_PARSER_CLASS_NAME);
 
         for (final MethodNode mn : cn.methods) {
             // Special handling for CoreModManager.handleLaunch method - replace entire method body
             if (isCoreModManager && HANDLE_LAUNCH_METHOD.equals(mn.name) && mn.desc.equals(HANDLE_LAUNCH_DESC)) {
                 replaceHandleLaunchMethod(mn);
                 continue; // Skip normal transformation for this method
+            }
+
+            if (isAsmModParser && "<init>".equals(mn.name) && "(Ljava/io/InputStream;)V".equals(mn.desc)) {
+                patchAsmModParserCtor(mn);
+                continue;
             }
 
             // Normal transformation - redirect method calls
@@ -81,6 +95,29 @@ public class FMLTransformer implements RfbClassTransformer {
                     }
                 }
             }
+        }
+    }
+
+    private static void patchAsmModParserCtor(@NotNull MethodNode mn) {
+        if (mn.instructions == null || mn.instructions.size() == 0) {
+            return;
+        }
+        for (int i = 0; i < mn.instructions.size(); i++) {
+            final AbstractInsnNode insn = mn.instructions.get(i);
+            if (insn.getOpcode() != Opcodes.INVOKEVIRTUAL || !(insn instanceof MethodInsnNode mInsn)) {
+                continue;
+            }
+            if (!CLASS_READER.equals(mInsn.owner) || !"accept".equals(mInsn.name) || !CLASS_VISITOR_ACCEPT_DESC.equals(mInsn.desc)) {
+                continue;
+            }
+            final AbstractInsnNode flagsInsn = insn.getPrevious();
+            if (flagsInsn == null || flagsInsn.getOpcode() != Opcodes.ICONST_0) {
+                return;
+            }
+
+            // Swap flags with SKIP_CODE | SKIP_DEBUG | SKIP_FRAMES
+            mn.instructions.set(flagsInsn, new IntInsnNode(Opcodes.BIPUSH, ASM_PARSE_SKIP_FLAGS));
+            return;
         }
     }
 

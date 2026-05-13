@@ -12,9 +12,10 @@ minecraft {
 //    )
 }
 tasks.processResources {
-    inputs.property("version", project.version.toString())
+    val projectVersion = project.version.toString()
+    inputs.property("version", projectVersion)
     filesMatching("META-INF/rfb-plugin/*") {
-        expand("version" to project.version.toString())
+        expand("version" to projectVersion)
     }
 }
 
