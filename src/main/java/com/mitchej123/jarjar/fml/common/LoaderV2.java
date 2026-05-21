@@ -200,8 +200,9 @@ public class LoaderV2 extends Loader {
         }
         for (ModCandidateV2 candidate : uniqueCandidates) {
             candidate.sendToTable(dataTable);
-            candidate.releaseParsedData();
         }
+
+        modCandidates.forEach(ModCandidateV2::releaseParsedData);
 
         identifyDuplicates(mods);
         namedMods = Maps.uniqueIndex(mods, new ModIdFunction());
