@@ -74,7 +74,7 @@ public final class CoreModManagerV2 extends CoreModManager {
 
     public static final Comparator<ModCandidateV2> COREMOD_COMPARATOR = Comparator.nullsFirst(
         Comparator.comparing(ModCandidateV2::getSortOrder)
-            .thenComparing(ModCandidateV2::getFilename)
+            .thenComparing(ModCandidateV2::getFilename, String.CASE_INSENSITIVE_ORDER)
             .thenComparing(ModCandidateV2::getVersion)
             .thenComparing(ModCandidateV2::getNestLevel));
 
