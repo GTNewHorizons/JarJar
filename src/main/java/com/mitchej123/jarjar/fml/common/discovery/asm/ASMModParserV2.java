@@ -38,7 +38,7 @@ import java.util.Set;
 
 public class ASMModParserV2 extends ASMModParser {
 
-    private static final ClassConstantPoolParser PRESCAN = new ClassConstantPoolParser("RuntimeVisibleAnnotations", "RuntimeVisibleParameterAnnotations");
+    private static final ClassConstantPoolParser PRESCAN = new ClassConstantPoolParser("RuntimeVisibleAnnotations", "RuntimeInvisibleAnnotations");
     private static final String DUMMY_MARKER_INTERNAL_NAME = "$JarJarDummy";
     private static final byte[] DUMMY_CLASS_BYTES = buildDummyClassBytes();
 
