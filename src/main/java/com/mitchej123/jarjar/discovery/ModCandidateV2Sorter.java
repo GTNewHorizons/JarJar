@@ -2,14 +2,17 @@ package com.mitchej123.jarjar.discovery;
 
 import com.mitchej123.jarjar.config.CoremodExemptions;
 import com.mitchej123.jarjar.fml.common.discovery.ModCandidateV2;
+import cpw.mods.fml.common.LoaderException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +76,15 @@ public class ModCandidateV2Sorter<T extends SortableCandidate> {
             if (isExemptCoremod) {
                 // Skip duplicate detection for exempt coremods
                 continue;
+            }
+
+            final Set<File> files = new HashSet<>();
+            for (final T it : equalIdCandidates) {
+                if (!files.add(it.getFile())) {
+                    final String msg = String.format("Mod id %s found multiple times in the same jar %s - Likely a Mutli Release Jar issue", entry.getKey(), it.getFile());
+                    LOGGER.error(msg);
+                    throw new LoaderException(msg);
+                }
             }
 
             T newest = null;
