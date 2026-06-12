@@ -316,7 +316,9 @@ public class ParallellModDiscoverer extends ModDiscoverer {
                     final JarEntry entry = entries.nextElement();
                     final String entryName = entry.getName();
                     final ASMModParserV2 asmData;
-                    if (entry.isDirectory() || entryName.startsWith("__MACOSX") || !entryName.endsWith(".class") || entryName.endsWith("$.class")) continue;
+                    if (entry.isDirectory() || entryName.startsWith("__MACOSX") || entryName.startsWith("META-INF/versions/")
+                        || !entryName.endsWith(".class") || entryName.endsWith("$.class") || entryName.endsWith("module-info.class"))
+                        continue;
                     try (final InputStream classStream = jar.getInputStream(entry)) {
                         final long entrySize = entry.getSize();
                         if (entrySize >= 0) {
