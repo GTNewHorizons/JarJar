@@ -6,6 +6,7 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Ints;
 import com.gtnewhorizons.retrofuturabootstrap.versioning.DefaultArtifactVersion;
+import com.mitchej123.jarjar.Config;
 import com.mitchej123.jarjar.fml.common.discovery.ModCandidateV2;
 import com.mitchej123.jarjar.fml.relauncher.CoreModManagerV2;
 import cpw.mods.fml.common.FMLLog;
@@ -47,6 +48,10 @@ public class JarUtil {
     public static final Logger logger = LogManager.getLogger("NestedJarUtil");
     private static final String versionPattern = ".*-([0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-zA-Z0-9]+)?(?:\\+[a-zA-Z0-9]+)?).*\\.jar";
     private static final Pattern pattern = Pattern.compile(versionPattern);
+
+    private static final String HODGEPODGE_COREMOD = "com.mitchej123.hodgepodge.core.HodgepodgeCore";
+    private static final DefaultArtifactVersion HODGEPODGE_LATE_TRANSFORMER_VERSION = new DefaultArtifactVersion("2.7.147");
+    private static final int HODGEPODGE_SORT_ORDER = 1;
 
     @Desugar public record NestedJar(File file, String sourceFilename, String hash) {
     }
@@ -221,7 +226,22 @@ public class JarUtil {
         } else if (coremodPass) {
             FMLRelaunchLog.fine("Not found coremod data in %s", modFile.getName());
         }
+        if (coremodPass) applyConfiguredSortOrder(modCandidate);
         return modCandidate;
+    }
+
+    private static void applyConfiguredSortOrder(ModCandidateV2 candidate) {
+        final String coreMod = candidate.getCoreMod();
+        if (coreMod == null || !Config.enableSortingIndexOverrides) return;
+        if (Config.sortingIndexOverrides.containsKey(coreMod)) {
+            final int sortOrder = Config.sortingIndexOverrides.getInt(coreMod);
+            candidate.setSortOrder(sortOrder);
+            FMLRelaunchLog.log(Level.INFO, "Applying configured SortingIndex %d to coremod %s", sortOrder, coreMod);
+        } else if (HODGEPODGE_COREMOD.equals(coreMod) && candidate.getVersion().compareTo(HODGEPODGE_LATE_TRANSFORMER_VERSION) < 0) {
+            // Hodgepodge pre 2.7.147 must register after NEI or OreDictionary won't verify.
+            candidate.setSortOrder(HODGEPODGE_SORT_ORDER);
+            FMLRelaunchLog.log(Level.INFO, "Forcing SortingIndex %d for Hodgepodge (%s).", HODGEPODGE_SORT_ORDER, candidate.getVersion());
+        }
     }
 
     public static List<ModCandidateV2> checkNestedMods(JarFile jar, ModCandidateV2 parent, boolean coremodPass) throws IOException {
