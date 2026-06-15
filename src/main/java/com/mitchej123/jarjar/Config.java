@@ -13,13 +13,13 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-
 /*
- * Note: Don't use Forge's config as this needs to load early without all of Forge's classes loaded
+ * Note: Don't use Forge's config or classes from deploaded dependencies (fastutil, etc) as this needs
+ * to load early before all of the other classes have been loaded.
  */
 public class Config {
 
@@ -27,7 +27,7 @@ public class Config {
 
     public static final int maxThreads;
     public static final boolean enableSortingIndexOverrides;
-    public static final Object2IntMap<String> sortingIndexOverrides;
+    public static final Map<String, Integer> sortingIndexOverrides;
 
     static {
         Properties config = new Properties();
@@ -45,7 +45,7 @@ public class Config {
         config.putIfAbsent("enableSortingIndexOverrides", "true");
         enableSortingIndexOverrides = Boolean.parseBoolean(config.getProperty("enableSortingIndexOverrides"));
 
-        final Object2IntMap<String> overrides = new Object2IntOpenHashMap<>();
+        final Map<String, Integer> overrides = new HashMap<>();
         final String sortingIndex = "SortingIndex.";
         final int subStrIdx = sortingIndex.length();
         for (String name : config.stringPropertyNames()) {
