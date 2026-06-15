@@ -234,7 +234,7 @@ public class JarUtil {
         final String coreMod = candidate.getCoreMod();
         if (coreMod == null || !Config.enableSortingIndexOverrides) return;
         if (Config.sortingIndexOverrides.containsKey(coreMod)) {
-            final int sortOrder = Config.sortingIndexOverrides.getInt(coreMod);
+            final int sortOrder = Config.sortingIndexOverrides.get(coreMod);
             candidate.setSortOrder(sortOrder);
             FMLRelaunchLog.log(Level.INFO, "Applying configured SortingIndex %d to coremod %s", sortOrder, coreMod);
         } else if (HODGEPODGE_COREMOD.equals(coreMod) && candidate.getVersion().compareTo(HODGEPODGE_LATE_TRANSFORMER_VERSION) < 0) {
