@@ -15,16 +15,25 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class ModCandidateV2 extends ModCandidate implements SortableCandidate {
+
+    // ASM type descriptor of the FML @API annotation (cpw.mods.fml.common.API)
+    public static final String API_ANNOTATION_DESC = "Lcpw/mods/fml/common/API;";
 
     private Map<String, String> accessTransformers = null;
     private String cascadedTweaker = null;
     private String fmlCorePlugin = null;
     private boolean containsMod = false;
     private boolean containsAPI = false;
+
+    private Set<String> earlyPackages = null;
+    private Map<String, DefaultArtifactVersion> declaredApiPackages = null;
 
     private Collection<ModCandidateV2> nestedModcandidates = null;
     private Collection<ModCandidateV2> parentModcandidates;
@@ -116,6 +125,29 @@ public class ModCandidateV2 extends ModCandidate implements SortableCandidate {
 
     public boolean containsAPIAnnotations() {
         return containsAPI;
+    }
+
+    public void addEarlyPackage(String pkg) {
+        if (earlyPackages == null) earlyPackages = new HashSet<>();
+        earlyPackages.add(pkg);
+    }
+
+    public Set<String> getEarlyPackages() {
+        return earlyPackages == null ? Collections.emptySet() : earlyPackages;
+    }
+
+    public void addDeclaredApiPackage(String pkg, DefaultArtifactVersion apiVersion) {
+        if (declaredApiPackages == null) declaredApiPackages = new HashMap<>();
+        declaredApiPackages.put(pkg, apiVersion);
+    }
+
+    public Map<String, DefaultArtifactVersion> getDeclaredApiPackages() {
+        return declaredApiPackages == null ? Collections.emptyMap() : declaredApiPackages;
+    }
+
+    public void releaseEarlyScanData() {
+        earlyPackages = null;
+        declaredApiPackages = null;
     }
 
     public boolean isNested() {
