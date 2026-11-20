@@ -1,5 +1,6 @@
 package com.mitchej123.jarjar.discovery;
 
+import com.gtnewhorizons.retrofuturabootstrap.versioning.DefaultArtifactVersion;
 import com.mitchej123.jarjar.config.CoremodExemptions;
 import com.mitchej123.jarjar.fml.common.discovery.ModCandidateV2;
 import cpw.mods.fml.common.LoaderException;
@@ -14,10 +15,13 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /*
@@ -30,6 +34,8 @@ public class ModCandidateV2Sorter<T extends SortableCandidate> {
     protected final List<T> candidates = new ArrayList<>();
     protected final Set<T> disabled = Collections.newSetFromMap(new IdentityHashMap<>());
     protected boolean criticalIssuesFound = false;
+    private final Comparator<T> comparator;
+    private List<T> classpathOrder;
 
     public Set<String> getDisabledFiles() {
         return disabled.stream()
@@ -39,12 +45,88 @@ public class ModCandidateV2Sorter<T extends SortableCandidate> {
 
     public ModCandidateV2Sorter(Collection<T> candidates, Comparator<T> comparator) {
         this.candidates.addAll(candidates);
-        if(comparator != null) this.candidates.sort(comparator);
+        this.comparator = comparator;
     }
 
     public Optional<List<T>> resolve() {
         handleDuplicates();
-        return criticalIssuesFound ? Optional.empty() : Optional.of(candidates);
+        try {
+            if (criticalIssuesFound) return Optional.empty();
+            if (comparator != null) candidates.sort(comparator);
+            classpathOrder = computeClasspathOrder();
+            return Optional.of(candidates);
+        } finally {
+            releaseEarlyScan();
+        }
+    }
+
+    public List<T> getClasspathOrder() {
+        return classpathOrder != null ? classpathOrder : candidates;
+    }
+
+    // Ensures API owners load before non owning API Packagers.
+    private List<T> computeClasspathOrder() {
+        final int n = candidates.size();
+        if (n < 2) return new ArrayList<>(candidates);
+        for (T c : candidates) {
+            if (!(c instanceof ModCandidateV2)) return new ArrayList<>(candidates);
+        }
+
+        final Map<String, Integer> ownerByPkg = new HashMap<>();
+        final Map<String, DefaultArtifactVersion> ownerVersionByPkg = new HashMap<>();
+        for (int i = 0; i < n; i++) {
+            for (Map.Entry<String, DefaultArtifactVersion> e : ((ModCandidateV2) candidates.get(i)).getDeclaredApiPackages().entrySet()) {
+                final DefaultArtifactVersion cur = ownerVersionByPkg.get(e.getKey());
+                if (cur == null || e.getValue().compareTo(cur) > 0) {
+                    ownerByPkg.put(e.getKey(), i);
+                    ownerVersionByPkg.put(e.getKey(), e.getValue());
+                }
+            }
+        }
+        if (ownerByPkg.isEmpty()) return new ArrayList<>(candidates);
+
+        final List<Set<Integer>> successors = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) successors.add(new HashSet<>());
+        final int[] indegree = new int[n];
+        final Map<String, Set<String>> conflicts = new LinkedHashMap<>();
+        for (int i = 0; i < n; i++) {
+            for (String pkg : ((ModCandidateV2) candidates.get(i)).getEarlyPackages()) {
+                final Integer owner = ownerByPkg.get(pkg);
+                if (owner == null || owner == i) continue;
+                if (successors.get(owner).add(i)) indegree[i]++;
+                conflicts.computeIfAbsent(
+                    ((ModCandidateV2) candidates.get(owner)).getFilename() + " ahead of " + ((ModCandidateV2) candidates.get(i)).getFilename(),
+                    k -> new TreeSet<>()).add(pkg);
+            }
+        }
+        if (conflicts.isEmpty()) return new ArrayList<>(candidates);
+        for (Map.Entry<String, Set<String>> e : conflicts.entrySet()) {
+            LOGGER.info("API ownership: prioritizing {} for package(s) {}", e.getKey(), e.getValue());
+        }
+
+        final List<T> ordered = new ArrayList<>(n);
+        final boolean[] emitted = new boolean[n];
+        final PriorityQueue<Integer> ready = new PriorityQueue<>();
+        for (int i = 0; i < n; i++) if (indegree[i] == 0) ready.add(i);
+        while (!ready.isEmpty()) {
+            final int pick = ready.poll();
+            ordered.add(candidates.get(pick));
+            emitted[pick] = true;
+            for (int s : successors.get(pick)) {
+                if (--indegree[s] == 0) ready.add(s);
+            }
+        }
+        if (ordered.size() < n) {
+            LOGGER.warn("API ownership: cyclic API package ownership -- leaving remaining mods in resolved order");
+            for (int i = 0; i < n; i++) if (!emitted[i]) ordered.add(candidates.get(i));
+        }
+        return ordered;
+    }
+
+    private void releaseEarlyScan() {
+        for (T c : candidates) {
+            if (c instanceof ModCandidateV2) ((ModCandidateV2) c).releaseEarlyScanData();
+        }
     }
 
     private void handleDuplicates() {
@@ -81,7 +163,7 @@ public class ModCandidateV2Sorter<T extends SortableCandidate> {
             final Set<File> files = new HashSet<>();
             for (final T it : equalIdCandidates) {
                 if (!files.add(it.getFile())) {
-                    final String msg = String.format("Mod id %s found multiple times in the same jar %s - Likely a Mutli Release Jar issue", entry.getKey(), it.getFile());
+                    final String msg = String.format("Mod id %s found multiple times in the same jar %s - Likely a Multi-Release Jar issue", entry.getKey(), it.getFile());
                     LOGGER.error(msg);
                     throw new LoaderException(msg);
                 }

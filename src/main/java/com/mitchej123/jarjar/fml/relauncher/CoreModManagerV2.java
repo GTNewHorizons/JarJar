@@ -328,7 +328,7 @@ public final class CoreModManagerV2 extends CoreModManager {
         modCandidates.clear();
         modCandidates.addAll(resolvedCandidates.get());
 
-        for (ModCandidateV2 candidate : modCandidates) {
+        for (ModCandidateV2 candidate : candidateSorter.getClasspathOrder()) {
             final File jar = candidate.getModContainer();
             if (jar == null) continue;
             try {

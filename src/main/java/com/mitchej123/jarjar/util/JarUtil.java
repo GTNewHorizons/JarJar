@@ -22,6 +22,10 @@ import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
+import org.objectweb.asm.AnnotationVisitor;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.Opcodes;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -30,6 +34,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -227,7 +232,61 @@ public class JarUtil {
             FMLRelaunchLog.fine("Not found coremod data in %s", modFile.getName());
         }
         if (coremodPass) applyConfiguredSortOrder(modCandidate);
+        if (coremodPass && !isMinecraft) {
+            scanPackagesAndApi(jar, modCandidate);
+        }
         return modCandidate;
+    }
+
+    private static void scanPackagesAndApi(JarFile jar, ModCandidateV2 candidate) {
+        final Enumeration<JarEntry> entries = jar.entries();
+        String lastDir = null;
+        String lastPkg = null;
+        while (entries.hasMoreElements()) {
+            final JarEntry entry = entries.nextElement();
+            if (entry.isDirectory()) continue;
+            final String name = entry.getName();
+            if (!name.endsWith(".class")) continue;
+            final int slash = name.lastIndexOf('/');
+            final String dir = slash < 0 ? "" : name.substring(0, slash);
+            final String pkg;
+            if (dir.equals(lastDir)) {
+                pkg = lastPkg;
+            } else {
+                pkg = dir.replace('/', '.');
+                candidate.addEarlyPackage(pkg);
+                lastDir = dir;
+                lastPkg = pkg;
+            }
+            if (name.endsWith("/package-info.class")) {
+                try {
+                    final DefaultArtifactVersion apiVersion = readApiVersion(new JarByteSource(jar, entry).read());
+                    if (apiVersion != null) candidate.addDeclaredApiPackage(pkg, apiVersion);
+                } catch (Exception e) {
+                    FMLRelaunchLog.log(Level.WARN, e, "Failed reading @API from %s in %s", name, candidate.getFilename());
+                }
+            }
+        }
+    }
+
+    private static DefaultArtifactVersion readApiVersion(byte[] classBytes) {
+        final boolean[] seen = {false};
+        final String[] version = {null};
+        new ClassReader(classBytes).accept(new ClassVisitor(Opcodes.ASM5) {
+            @Override
+            public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
+                if (!ModCandidateV2.API_ANNOTATION_DESC.equals(desc)) return null;
+                seen[0] = true;
+                return new AnnotationVisitor(Opcodes.ASM5) {
+                    @Override
+                    public void visit(String n, Object value) {
+                        if ("apiVersion".equals(n) && value instanceof String) version[0] = (String) value;
+                    }
+                };
+            }
+        }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+        if (!seen[0]) return null;
+        return new DefaultArtifactVersion(version[0] == null || version[0].isEmpty() ? "0.0.0" : version[0]);
     }
 
     private static void applyConfiguredSortOrder(ModCandidateV2 candidate) {
