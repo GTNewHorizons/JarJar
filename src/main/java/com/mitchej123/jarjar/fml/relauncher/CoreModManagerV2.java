@@ -332,7 +332,7 @@ public final class CoreModManagerV2 extends CoreModManager {
             final File jar = candidate.getModContainer();
             if (jar == null) continue;
             try {
-                addUrlToLoaderAndParent(classLoader, jar.toURI().toURL());
+                classLoader.addURL(jar.toURI().toURL());
             } catch (MalformedURLException e) {
                 FMLRelaunchLog.log(Level.WARN, e, "Skipping bad URL for %s", jar);
             }
